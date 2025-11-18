@@ -1,0 +1,44 @@
+# Core Dependencies
+streamlit>=1.31.0
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-anthropic>=0.2.0
+langchain-community>=0.3.0
+
+# Email Services
+google-api-python-client>=2.100.0
+google-auth-httplib2>=0.2.0
+google-auth-oauthlib>=1.2.0
+
+# Optional: Microsoft Outlook Support
+# O365>=2.0.27
+# msal>=1.25.0
+
+# Data Handling
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+
+# Utilities
+python-dateutil>=2.8.2
+pytz>=2023.3
+
+# Email Parsing
+email-validator>=2.1.0
+beautifulsoup4>=4.12.0
+html2text>=2020.1.16
+
+# Database (for storing drafts, history, etc.)
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+
+# Caching
+redis>=5.0.0
+
+# Logging & Monitoring
+loguru>=0.7.0
+
+# Testing (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
