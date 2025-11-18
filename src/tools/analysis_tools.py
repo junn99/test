@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Tuple
 import re
 from datetime import datetime
 
-from langchain_core.tools import tool
+from langchain_core.tools import StructuredTool
 
 from ..utils.logger import setup_logger
 
@@ -30,7 +30,6 @@ class ContentAnalyzer:
             "와", "과", "도", "만", "까지", "부터", "하다", "되다", "있다", "없다",
         ])
 
-    @tool
     def extract_keywords(self, text: str, top_n: int = 20) -> List[Tuple[str, int]]:
         """
         Extract top keywords from text using simple frequency analysis.
@@ -65,7 +64,6 @@ class ContentAnalyzer:
         logger.info(f"Extracted {len(top_keywords)} keywords from text")
         return top_keywords
 
-    @tool
     def extract_tags(self, pages: List[Dict[str, Any]]) -> Dict[str, int]:
         """
         Extract and count tags/hashtags from pages.
@@ -96,7 +94,6 @@ class ContentAnalyzer:
         logger.info(f"Found {len(tag_counter)} unique tags")
         return dict(tag_counter)
 
-    @tool
     def analyze_writing_patterns(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Analyze writing patterns from pages.
@@ -154,7 +151,6 @@ class ContentAnalyzer:
         logger.info(f"Analyzed writing patterns from {len(pages)} pages")
         return analysis
 
-    @tool
     def analyze_activity_patterns(self, pages: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Analyze activity patterns (time of edits, frequency, etc.).
@@ -215,7 +211,6 @@ class ContentAnalyzer:
         logger.info(f"Analyzed activity patterns from {len(edit_times)} edits")
         return analysis
 
-    @tool
     def generate_insights(self, pages: List[Dict[str, Any]]) -> List[str]:
         """
         Generate insights from analyzed data.
@@ -269,9 +264,29 @@ class ContentAnalyzer:
     def get_tools(self):
         """Get all analysis tools as a list."""
         return [
-            self.extract_keywords,
-            self.extract_tags,
-            self.analyze_writing_patterns,
-            self.analyze_activity_patterns,
-            self.generate_insights,
+            StructuredTool.from_function(
+                func=self.extract_keywords,
+                name="extract_keywords",
+                description="Extract top keywords from text using frequency analysis"
+            ),
+            StructuredTool.from_function(
+                func=self.extract_tags,
+                name="extract_tags",
+                description="Extract and count tags/hashtags from pages"
+            ),
+            StructuredTool.from_function(
+                func=self.analyze_writing_patterns,
+                name="analyze_writing_patterns",
+                description="Analyze writing patterns from pages"
+            ),
+            StructuredTool.from_function(
+                func=self.analyze_activity_patterns,
+                name="analyze_activity_patterns",
+                description="Analyze activity patterns (time of edits, frequency, etc.)"
+            ),
+            StructuredTool.from_function(
+                func=self.generate_insights,
+                name="generate_insights",
+                description="Generate insights from analyzed data"
+            ),
         ]

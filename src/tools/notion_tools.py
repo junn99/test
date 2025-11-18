@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from langchain_core.tools import tool
+from langchain_core.tools import StructuredTool
 from notion_client import Client
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
@@ -51,7 +51,6 @@ class NotionToolkit:
         with notion_rate_limiter:
             return func(*args, **kwargs)
 
-    @tool
     def get_all_pages(self) -> List[Dict[str, Any]]:
         """
         Retrieve all pages from the Notion workspace.
@@ -97,7 +96,6 @@ class NotionToolkit:
             logger.error(f"Error fetching pages: {e}")
             return []
 
-    @tool
     def get_page_content(self, page_id: str) -> Dict[str, Any]:
         """
         Get the full content of a specific Notion page.
@@ -146,7 +144,6 @@ class NotionToolkit:
             logger.error(f"Error fetching page content: {e}")
             return {"error": str(e)}
 
-    @tool
     def get_recently_edited_pages(self, days: int = 1) -> List[Dict[str, Any]]:
         """
         Get pages edited in the last N days.
@@ -205,7 +202,6 @@ class NotionToolkit:
             logger.error(f"Error fetching recent pages: {e}")
             return []
 
-    @tool
     def search_pages(self, query: str) -> List[Dict[str, Any]]:
         """
         Search for pages containing specific text.
@@ -251,7 +247,6 @@ class NotionToolkit:
             logger.error(f"Error searching pages: {e}")
             return []
 
-    @tool
     def get_databases(self) -> List[Dict[str, Any]]:
         """
         Get all databases in the workspace.
@@ -288,7 +283,6 @@ class NotionToolkit:
             logger.error(f"Error fetching databases: {e}")
             return []
 
-    @tool
     def create_page(self, title: str, content: str, parent_page_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new Notion page.
@@ -366,7 +360,6 @@ class NotionToolkit:
             logger.error(f"Error creating page: {e}")
             return {"error": str(e)}
 
-    @tool
     def update_page(self, page_id: str, title: Optional[str] = None, archived: bool = False) -> Dict[str, Any]:
         """
         Update a Notion page properties.
@@ -420,7 +413,6 @@ class NotionToolkit:
             logger.error(f"Error updating page: {e}")
             return {"error": str(e)}
 
-    @tool
     def query_database(self, database_id: str, filter_dict: Optional[Dict] = None) -> List[Dict[str, Any]]:
         """
         Query a Notion database.
@@ -486,12 +478,44 @@ class NotionToolkit:
     def get_tools(self):
         """Get all tools as a list for LangChain agent."""
         return [
-            self.get_all_pages,
-            self.get_page_content,
-            self.get_recently_edited_pages,
-            self.search_pages,
-            self.get_databases,
-            self.create_page,
-            self.update_page,
-            self.query_database,
+            StructuredTool.from_function(
+                func=self.get_all_pages,
+                name="get_all_pages",
+                description="Retrieve all pages from the Notion workspace"
+            ),
+            StructuredTool.from_function(
+                func=self.get_page_content,
+                name="get_page_content",
+                description="Get the full content of a specific Notion page"
+            ),
+            StructuredTool.from_function(
+                func=self.get_recently_edited_pages,
+                name="get_recently_edited_pages",
+                description="Get pages edited in the last N days"
+            ),
+            StructuredTool.from_function(
+                func=self.search_pages,
+                name="search_pages",
+                description="Search for pages containing specific text"
+            ),
+            StructuredTool.from_function(
+                func=self.get_databases,
+                name="get_databases",
+                description="Get all databases in the workspace"
+            ),
+            StructuredTool.from_function(
+                func=self.create_page,
+                name="create_page",
+                description="Create a new Notion page"
+            ),
+            StructuredTool.from_function(
+                func=self.update_page,
+                name="update_page",
+                description="Update a Notion page properties"
+            ),
+            StructuredTool.from_function(
+                func=self.query_database,
+                name="query_database",
+                description="Query a Notion database"
+            ),
         ]
