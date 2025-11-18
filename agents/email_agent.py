@@ -11,6 +11,7 @@ from loguru import logger
 
 from config.settings import settings
 from agents.tools import get_email_tools
+from agents.prompts import get_enhanced_system_prompt
 from services.gmail_service import GmailService
 
 
@@ -92,27 +93,8 @@ class EmailAssistantAgent:
         Returns:
             Agent instance
         """
-        # Create system prompt
-        system_message = """You are an intelligent email assistant that helps users manage their emails.
-
-Your capabilities include:
-- Checking and reading emails
-- Searching for specific emails
-- Composing email drafts
-- Sending emails (always confirm with user first!)
-- Summarizing email content
-- Helping prioritize important emails
-
-Guidelines:
-1. Always be helpful, clear, and concise in your responses
-2. When checking emails, provide a useful summary
-3. Before sending any email, ALWAYS show the user the content and ask for confirmation
-4. Use appropriate tools to accomplish tasks
-5. If you're unsure, ask clarifying questions
-6. Respect user privacy and handle email content with care
-7. For sensitive operations like sending emails, be extra careful and always confirm
-
-Current task: Help the user manage their emails efficiently."""
+        # Use enhanced system prompt
+        system_message = get_enhanced_system_prompt()
 
         # Create prompt template
         prompt = ChatPromptTemplate.from_messages([

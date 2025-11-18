@@ -68,3 +68,6 @@ htmlcov/
 *.tmp
 temp/
 tmp/
+
+# User Data
+email_templates.json

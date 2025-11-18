@@ -159,7 +159,7 @@ def render_sidebar():
         st.header("Navigation")
         page = st.radio(
             "Go to",
-            ["Inbox", "Compose", "Search", "Agent Chat", "Settings"],
+            ["Inbox", "Compose", "Search", "Templates", "Batch Operations", "Agent Chat", "Settings"],
             label_visibility="collapsed"
         )
 
@@ -282,3 +282,291 @@ def show_notification(message: str, type: str = "info"):
         st.error(message)
     else:
         st.info(message)
+
+
+def render_template_selector():
+    """Render email template selector.
+
+    Returns:
+        Selected template ID or None
+    """
+    from utils.templates import get_template_manager
+
+    template_manager = get_template_manager()
+    templates = template_manager.get_all_templates()
+
+    if not templates:
+        st.info("No templates available. Create one below!")
+        return None
+
+    st.subheader("📝 Email Templates")
+
+    # Group by category
+    categories = template_manager.get_categories()
+
+    # Category filter
+    selected_category = st.selectbox(
+        "Category",
+        ["All"] + categories
+    )
+
+    # Filter templates
+    if selected_category == "All":
+        filtered_templates = templates
+    else:
+        filtered_templates = template_manager.get_templates_by_category(selected_category)
+
+    if not filtered_templates:
+        st.info(f"No templates in category '{selected_category}'")
+        return None
+
+    # Template selector
+    template_options = {tpl.id: f"{tpl.name} ({tpl.category})" for tpl in filtered_templates}
+    selected_id = st.selectbox(
+        "Select Template",
+        options=list(template_options.keys()),
+        format_func=lambda x: template_options[x]
+    )
+
+    if selected_id:
+        template = template_manager.get_template(selected_id)
+
+        # Preview
+        with st.expander("Preview Template"):
+            st.markdown(f"**Subject:** {template.subject}")
+            st.markdown("**Body:**")
+            st.text(template.body)
+
+            if template.variables:
+                st.markdown("**Variables:** " + ", ".join([f"`{{{var}}}`" for var in template.variables]))
+
+        # Variable inputs
+        if template.variables:
+            st.markdown("### Fill in Variables")
+            variables = {}
+
+            for var in template.variables:
+                variables[var] = st.text_input(
+                    f"{var}",
+                    key=f"var_{selected_id}_{var}"
+                )
+
+            if st.button("Apply Template", type="primary"):
+                result = template_manager.apply_template(selected_id, variables)
+                return {
+                    "template_id": selected_id,
+                    "subject": result["subject"],
+                    "body": result["body"]
+                }
+
+    return None
+
+
+def render_template_manager():
+    """Render template management interface."""
+    from utils.templates import get_template_manager
+
+    st.subheader("📚 Template Management")
+
+    template_manager = get_template_manager()
+
+    tab1, tab2, tab3 = st.tabs(["Create", "Edit", "Delete"])
+
+    with tab1:
+        st.markdown("### Create New Template")
+
+        with st.form("create_template"):
+            name = st.text_input("Template Name")
+            category = st.text_input("Category", value="General")
+            subject = st.text_input("Subject Template")
+            body = st.text_area("Body Template", height=200)
+            variables = st.text_input(
+                "Variables (comma-separated)",
+                placeholder="e.g., 이름, 날짜, 주제"
+            )
+
+            if st.form_submit_button("Create Template"):
+                if name and subject and body:
+                    var_list = [v.strip() for v in variables.split(",") if v.strip()]
+
+                    template = template_manager.create_template(
+                        name=name,
+                        subject=subject,
+                        body=body,
+                        category=category,
+                        variables=var_list
+                    )
+
+                    st.success(f"Template '{name}' created successfully!")
+                    st.rerun()
+                else:
+                    st.error("Please fill in all required fields")
+
+    with tab2:
+        st.markdown("### Edit Template")
+
+        templates = template_manager.get_all_templates()
+        if templates:
+            template_options = {tpl.id: tpl.name for tpl in templates}
+            selected_id = st.selectbox(
+                "Select Template to Edit",
+                options=list(template_options.keys()),
+                format_func=lambda x: template_options[x],
+                key="edit_selector"
+            )
+
+            if selected_id:
+                template = template_manager.get_template(selected_id)
+
+                with st.form("edit_template"):
+                    name = st.text_input("Template Name", value=template.name)
+                    category = st.text_input("Category", value=template.category)
+                    subject = st.text_input("Subject Template", value=template.subject)
+                    body = st.text_area("Body Template", value=template.body, height=200)
+                    variables = st.text_input(
+                        "Variables (comma-separated)",
+                        value=", ".join(template.variables) if template.variables else ""
+                    )
+
+                    if st.form_submit_button("Update Template"):
+                        var_list = [v.strip() for v in variables.split(",") if v.strip()]
+
+                        template_manager.update_template(
+                            template_id=selected_id,
+                            name=name,
+                            subject=subject,
+                            body=body,
+                            category=category,
+                            variables=var_list
+                        )
+
+                        st.success(f"Template updated successfully!")
+                        st.rerun()
+        else:
+            st.info("No templates available to edit")
+
+    with tab3:
+        st.markdown("### Delete Template")
+
+        templates = template_manager.get_all_templates()
+        if templates:
+            template_options = {tpl.id: tpl.name for tpl in templates}
+            selected_id = st.selectbox(
+                "Select Template to Delete",
+                options=list(template_options.keys()),
+                format_func=lambda x: template_options[x],
+                key="delete_selector"
+            )
+
+            if selected_id:
+                template = template_manager.get_template(selected_id)
+
+                st.warning(f"Are you sure you want to delete template '{template.name}'?")
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    if st.button("Yes, Delete", type="primary"):
+                        template_manager.delete_template(selected_id)
+                        st.success("Template deleted successfully!")
+                        st.rerun()
+
+                with col2:
+                    if st.button("Cancel"):
+                        st.info("Deletion cancelled")
+        else:
+            st.info("No templates available to delete")
+
+
+def render_batch_operations(emails: List[EmailMessage]):
+    """Render batch operations interface.
+
+    Args:
+        emails: List of emails to operate on
+    """
+    from utils.batch_operations import BatchActionType
+
+    st.subheader("⚡ Batch Operations")
+
+    if not emails:
+        st.info("No emails to perform batch operations on")
+        return None
+
+    # Email selection
+    st.markdown(f"### Select Emails ({len(emails)} available)")
+
+    # Select all checkbox
+    select_all = st.checkbox("Select All")
+
+    # Individual selection
+    selected_emails = []
+
+    if select_all:
+        selected_emails = emails
+        st.info(f"All {len(emails)} emails selected")
+    else:
+        # Show email list with checkboxes
+        for idx, email in enumerate(emails[:20]):  # Limit to 20 for UI performance
+            col1, col2 = st.columns([1, 9])
+
+            with col1:
+                if st.checkbox("", key=f"batch_select_{idx}_{email.id}"):
+                    selected_emails.append(email)
+
+            with col2:
+                st.markdown(f"**{email.subject}** from {email.sender}")
+
+        if len(emails) > 20:
+            st.info(f"Showing first 20 emails. Use 'Select All' to select all {len(emails)} emails.")
+
+    if not selected_emails:
+        st.warning("No emails selected")
+        return None
+
+    st.markdown(f"**{len(selected_emails)} email(s) selected**")
+
+    # Action selection
+    st.markdown("### Select Action")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("📖 Mark as Read", use_container_width=True):
+            return {
+                "action": BatchActionType.MARK_READ,
+                "emails": selected_emails
+            }
+
+    with col2:
+        if st.button("📬 Mark as Unread", use_container_width=True):
+            return {
+                "action": BatchActionType.MARK_UNREAD,
+                "emails": selected_emails
+            }
+
+    with col3:
+        if st.button("⭐ Star", use_container_width=True):
+            return {
+                "action": BatchActionType.STAR,
+                "emails": selected_emails
+            }
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("📂 Archive", use_container_width=True):
+            return {
+                "action": BatchActionType.ARCHIVE,
+                "emails": selected_emails
+            }
+
+    with col2:
+        if st.button("🗑️ Delete", use_container_width=True):
+            st.warning("⚠️ This will delete the selected emails!")
+            if st.button("Confirm Delete", type="primary"):
+                return {
+                    "action": BatchActionType.DELETE,
+                    "emails": selected_emails
+                }
+
+    return None

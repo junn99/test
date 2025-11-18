@@ -19,6 +19,9 @@ from ui.components import (
     render_email_composer,
     render_chat_interface,
     render_search_interface,
+    render_template_selector,
+    render_template_manager,
+    render_batch_operations,
     show_notification,
 )
 
@@ -154,6 +157,14 @@ def render_compose_page():
 
     if reply_to:
         st.info(f"Replying to: {reply_to.subject}")
+
+    # Template selector (optional)
+    with st.expander("📝 Use Email Template"):
+        template_result = render_template_selector()
+        if template_result:
+            st.session_state["template_subject"] = template_result["subject"]
+            st.session_state["template_body"] = template_result["body"]
+            st.success("Template applied! Scroll down to see the composer.")
 
     # Render composer
     compose_result = render_email_composer(reply_to=reply_to)
@@ -394,6 +405,59 @@ def render_settings_page():
             st.error(f"Error revoking credentials: {e}")
 
 
+def render_templates_page():
+    """Render templates management page."""
+    st.title("📚 Email Templates")
+
+    render_template_manager()
+
+
+def render_batch_operations_page():
+    """Render batch operations page."""
+    st.title("⚡ Batch Operations")
+
+    # Get current emails from session state
+    emails = st.session_state.get("emails", [])
+
+    if not emails:
+        st.info("No emails loaded. Please go to Inbox and load emails first.")
+        return
+
+    # Render batch operations interface
+    batch_result = render_batch_operations(emails)
+
+    if batch_result:
+        from utils.batch_operations import create_batch_operations
+
+        try:
+            email_service = st.session_state["email_service"]
+            batch_ops = create_batch_operations(email_service)
+
+            # Extract email IDs
+            email_ids = [email.id for email in batch_result["emails"]]
+
+            # Execute batch operation
+            with st.spinner(f"Executing {batch_result['action'].value}..."):
+                result = batch_ops.execute_batch(
+                    message_ids=email_ids,
+                    action=batch_result["action"]
+                )
+
+                # Show results
+                st.success(str(result))
+
+                # Show detailed results
+                with st.expander("Detailed Results"):
+                    st.json(result.to_dict())
+
+                # Refresh inbox
+                st.session_state["refresh_inbox"] = True
+
+        except Exception as e:
+            logger.error(f"Batch operation error: {e}")
+            st.error(f"Batch operation failed: {str(e)}")
+
+
 def main():
     """Main application entry point."""
     # Initialize session state
@@ -412,6 +476,10 @@ def main():
         render_compose_page()
     elif page == "Search":
         render_search_page()
+    elif page == "Templates":
+        render_templates_page()
+    elif page == "Batch Operations":
+        render_batch_operations_page()
     elif page == "Agent Chat":
         render_agent_chat_page()
     elif page == "Settings":
