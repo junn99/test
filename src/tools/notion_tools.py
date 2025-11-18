@@ -4,9 +4,11 @@ from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
 from notion_client import Client
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from ..utils.config import settings
 from ..utils.logger import setup_logger
+from ..utils.rate_limiter import notion_rate_limiter
 
 logger = setup_logger(__name__)
 
@@ -38,6 +40,17 @@ class NotionToolkit:
 
         return "\n".join(text_parts)
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(Exception),
+        reraise=True
+    )
+    def _api_call_with_rate_limit(self, func, *args, **kwargs):
+        """Execute API call with rate limiting."""
+        with notion_rate_limiter:
+            return func(*args, **kwargs)
+
     @tool
     def get_all_pages(self) -> List[Dict[str, Any]]:
         """
@@ -50,8 +63,11 @@ class NotionToolkit:
         pages = []
 
         try:
-            # Search for all pages
-            results = self.client.search(filter={"property": "object", "value": "page"})
+            # Search for all pages with rate limiting
+            results = self._api_call_with_rate_limit(
+                self.client.search,
+                filter={"property": "object", "value": "page"}
+            )
 
             for page in results.get("results", []):
                 page_id = page["id"]
@@ -95,11 +111,17 @@ class NotionToolkit:
         logger.info(f"Fetching content for page: {page_id}")
 
         try:
-            # Get page metadata
-            page = self.client.pages.retrieve(page_id=page_id)
+            # Get page metadata with rate limiting
+            page = self._api_call_with_rate_limit(
+                self.client.pages.retrieve,
+                page_id=page_id
+            )
 
-            # Get page blocks (content)
-            blocks = self.client.blocks.children.list(block_id=page_id)
+            # Get page blocks (content) with rate limiting
+            blocks = self._api_call_with_rate_limit(
+                self.client.blocks.children.list,
+                block_id=page_id
+            )
             content = self._extract_text_from_blocks(blocks.get("results", []))
 
             # Extract title
@@ -140,7 +162,8 @@ class NotionToolkit:
         try:
             cutoff_date = datetime.now() - timedelta(days=days)
 
-            results = self.client.search(
+            results = self._api_call_with_rate_limit(
+                self.client.search,
                 filter={
                     "property": "object",
                     "value": "page"
@@ -196,7 +219,8 @@ class NotionToolkit:
         logger.info(f"Searching for: {query}")
 
         try:
-            results = self.client.search(
+            results = self._api_call_with_rate_limit(
+                self.client.search,
                 query=query,
                 filter={"property": "object", "value": "page"}
             )
@@ -238,7 +262,8 @@ class NotionToolkit:
         logger.info("Fetching all databases")
 
         try:
-            results = self.client.search(
+            results = self._api_call_with_rate_limit(
+                self.client.search,
                 filter={"property": "object", "value": "database"}
             )
 

@@ -4,10 +4,13 @@ from datetime import datetime
 import json
 
 from ..agents.notion_agent import create_agent
+from ..agents.style_agent import create_style_agent
 from ..sync.daily_sync import DailySync
 from ..scheduler.jobs import get_scheduler
 from ..memory.user_profile import UserProfile
 from ..rag.vector_store import VectorStoreManager
+from ..tools.notion_tools import NotionToolkit
+from ..tools.analysis_tools import ContentAnalyzer
 from ..utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -81,23 +84,53 @@ def page_overview():
     """Overview page."""
     st.title("🏠 Notion 작업공간 개요")
 
+    # Get real statistics
+    try:
+        vector_store = VectorStoreManager()
+        all_pages = vector_store.get_all_pages()
+        total_pages = len(all_pages)
+
+        # Count recent updates (last 24 hours)
+        recent_count = 0
+        now = datetime.now()
+        for page in all_pages:
+            last_edited = page.get("last_edited_time")
+            if last_edited:
+                try:
+                    edited_dt = datetime.fromisoformat(last_edited.replace("Z", "+00:00"))
+                    if (now - edited_dt.replace(tzinfo=None)).days < 1:
+                        recent_count += 1
+                except:
+                    pass
+
+        # Get database count
+        notion = NotionToolkit()
+        databases = notion.get_databases()
+        db_count = len(databases)
+
+    except Exception as e:
+        logger.error(f"Error getting statistics: {e}")
+        total_pages = 0
+        recent_count = 0
+        db_count = 0
+
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.metric("총 페이지 수", "0", help="벡터 DB에 저장된 페이지")
+        st.metric("총 페이지 수", total_pages, help="벡터 DB에 저장된 페이지")
 
     with col2:
-        st.metric("최근 업데이트", "0", help="지난 24시간 내 수정")
+        st.metric("최근 업데이트", recent_count, help="지난 24시간 내 수정")
 
     with col3:
-        st.metric("데이터베이스", "0", help="Notion 데이터베이스 개수")
+        st.metric("데이터베이스", db_count, help="Notion 데이터베이스 개수")
 
     st.markdown("---")
 
     # Quick actions
     st.subheader("빠른 작업")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
 
     with col1:
         if st.button("🔍 작업공간 분석", use_container_width=True):
@@ -115,7 +148,21 @@ def page_overview():
                 st.success("보고서 생성 완료!")
                 st.markdown(result)
 
-    with col3:
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if st.button("🎨 스타일 학습 실행", use_container_width=True):
+            style_agent = create_style_agent()
+            with st.spinner("글쓰기 스타일 학습 중... (최대 20개 페이지 분석)"):
+                result = style_agent.learn_from_workspace(max_pages=20)
+
+                if "error" not in result:
+                    st.success("스타일 학습 완료!")
+                    st.json(result)
+                else:
+                    st.error(f"학습 실패: {result['error']}")
+
+    with col2:
         if st.button("🔄 지금 동기화", use_container_width=True):
             with st.spinner("동기화 중..."):
                 sync = DailySync()
@@ -158,33 +205,81 @@ def page_analytics():
     profile = st.session_state.user_profile
     patterns = profile.profile_data.get("learned_patterns", {})
 
+    # Add refresh button
+    if st.button("🔄 분석 새로고침"):
+        style_agent = create_style_agent()
+        with st.spinner("작업공간 재분석 중..."):
+            result = style_agent.learn_from_workspace(max_pages=20)
+            if "error" not in result:
+                st.success("분석 완료! 페이지를 새로고침하세요.")
+                st.rerun()
+
+    st.markdown("---")
+
+    # Statistics
+    stats = profile.profile_data.get("statistics", {})
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("분석된 페이지", stats.get("total_pages_analyzed", 0))
+
+    with col2:
+        st.metric("생성된 보고서", stats.get("reports_generated", 0))
+
+    with col3:
+        last_sync = stats.get("last_sync", "N/A")
+        st.metric("마지막 동기화", last_sync if last_sync != "N/A" else "없음")
+
+    st.markdown("---")
+
     # Keywords
-    st.subheader("자주 사용하는 키워드")
+    st.subheader("🔑 자주 사용하는 키워드")
     keywords = patterns.get("common_keywords", [])
     if keywords:
-        st.write(", ".join(keywords[:20]))
+        # Display as tags
+        keyword_html = " ".join([f'<span style="background-color: #f0f0f0; padding: 5px 10px; margin: 2px; border-radius: 5px; display: inline-block;">{kw}</span>' for kw in keywords[:20]])
+        st.markdown(keyword_html, unsafe_allow_html=True)
     else:
-        st.info("아직 학습된 키워드가 없습니다. 동기화를 실행해주세요.")
+        st.info("아직 학습된 키워드가 없습니다. '스타일 학습 실행' 버튼을 눌러주세요.")
 
     st.markdown("---")
 
     # Tags
-    st.subheader("자주 사용하는 태그")
+    st.subheader("🏷️ 자주 사용하는 태그")
     tags = patterns.get("frequent_tags", [])
     if tags:
-        st.write(", ".join(tags[:20]))
+        tag_html = " ".join([f'<span style="background-color: #e3f2fd; padding: 5px 10px; margin: 2px; border-radius: 5px; display: inline-block;">#{tag}</span>' for tag in tags[:20]])
+        st.markdown(tag_html, unsafe_allow_html=True)
     else:
         st.info("아직 학습된 태그가 없습니다.")
 
     st.markdown("---")
 
     # Writing style
-    st.subheader("글쓰기 스타일 분석")
+    st.subheader("✍️ 글쓰기 스타일 분석")
     style_notes = patterns.get("writing_style_notes", "")
+
     if style_notes:
-        st.write(style_notes)
+        # Try to parse if it's JSON
+        try:
+            if isinstance(style_notes, str) and (style_notes.startswith("{") or "sentence_structure" in style_notes):
+                import json
+                style_data = json.loads(style_notes) if isinstance(style_notes, str) else style_notes
+
+                st.write("**분석 결과:**")
+                st.write(f"- 문장 구조: {style_data.get('sentence_structure', 'N/A')}")
+                st.write(f"- 어투: {style_data.get('tone', 'N/A')}")
+                st.write(f"- 전반적인 톤: {style_data.get('overall_tone', 'N/A')}")
+                st.write(f"- 이모지 사용: {style_data.get('emoji_usage', 'N/A')}")
+
+                if style_data.get("summary"):
+                    st.info(f"💡 {style_data['summary']}")
+            else:
+                st.write(style_notes)
+        except:
+            st.write(style_notes)
     else:
-        st.info("글쓰기 스타일이 아직 분석되지 않았습니다.")
+        st.info("글쓰기 스타일이 아직 분석되지 않았습니다. '스타일 학습 실행'을 눌러주세요.")
 
 
 def page_reports():
