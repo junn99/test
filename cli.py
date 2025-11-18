@@ -7,6 +7,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.agents.notion_agent import create_agent
+from src.agents.multi_agent import create_multi_agent_system
+from src.agents.style_agent import create_style_agent
 from src.sync.daily_sync import run_daily_sync, run_full_sync
 from src.scheduler.jobs import get_scheduler
 from src.memory.user_profile import UserProfile
@@ -37,10 +39,20 @@ def cmd_sync(args):
 
 def cmd_chat(args):
     """Interactive chat mode."""
-    print("Notion Knowledge Agent - Chat Mode")
+    if args.multi_agent:
+        print("Notion Knowledge Agent - Multi-Agent Chat Mode")
+        print("Using specialized agents: Supervisor, Analyzer, Writer, Editor")
+    else:
+        print("Notion Knowledge Agent - Chat Mode")
+
     print("Type 'exit' or 'quit' to end the conversation\n")
 
-    agent = create_agent()
+    if args.multi_agent:
+        agent = create_multi_agent_system()
+        chat_func = lambda q: agent.process(q)
+    else:
+        agent = create_agent()
+        chat_func = lambda q: agent.chat(q)
 
     while True:
         try:
@@ -54,7 +66,7 @@ def cmd_chat(args):
                 continue
 
             print("\nAgent: ", end="", flush=True)
-            response = agent.chat(query)
+            response = chat_func(query)
             print(response)
             print()
 
@@ -142,6 +154,23 @@ def cmd_scheduler(args):
     return 0
 
 
+def cmd_learn_style(args):
+    """Learn writing style from workspace."""
+    print(f"Learning writing style from up to {args.max_pages} pages...\n")
+
+    style_agent = create_style_agent()
+    result = style_agent.learn_from_workspace(max_pages=args.max_pages)
+
+    if "error" in result:
+        print(f"❌ Error: {result['error']}")
+        return 1
+
+    print("✅ Style learning completed!\n")
+    print(style_agent.get_style_summary())
+
+    return 0
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -167,9 +196,23 @@ def main():
 
     # Chat command
     chat_parser = subparsers.add_parser("chat", help="Interactive chat mode")
+    chat_parser.add_argument(
+        "--multi-agent",
+        action="store_true",
+        help="Use multi-agent system (Supervisor, Analyzer, Writer, Editor)"
+    )
 
     # Analyze command
     analyze_parser = subparsers.add_parser("analyze", help="Analyze workspace")
+
+    # Learn style command
+    learn_parser = subparsers.add_parser("learn-style", help="Learn writing style from workspace")
+    learn_parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=20,
+        help="Maximum number of pages to analyze (default: 20)"
+    )
 
     # Report command
     report_parser = subparsers.add_parser("report", help="Generate report")
@@ -206,6 +249,7 @@ def main():
         "sync": cmd_sync,
         "chat": cmd_chat,
         "analyze": cmd_analyze,
+        "learn-style": cmd_learn_style,
         "report": cmd_report,
         "profile": cmd_profile,
         "scheduler": cmd_scheduler,

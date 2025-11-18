@@ -288,6 +288,201 @@ class NotionToolkit:
             logger.error(f"Error fetching databases: {e}")
             return []
 
+    @tool
+    def create_page(self, title: str, content: str, parent_page_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Create a new Notion page.
+
+        Args:
+            title: Page title.
+            content: Page content (plain text).
+            parent_page_id: Optional parent page ID.
+
+        Returns:
+            Dictionary with created page info.
+        """
+        logger.info(f"Creating page: {title}")
+
+        try:
+            # Build page properties
+            properties = {
+                "title": {
+                    "title": [
+                        {
+                            "text": {
+                                "content": title
+                            }
+                        }
+                    ]
+                }
+            }
+
+            # Build children (content blocks)
+            children = []
+            for paragraph in content.split('\n\n'):
+                if paragraph.strip():
+                    children.append({
+                        "object": "block",
+                        "type": "paragraph",
+                        "paragraph": {
+                            "rich_text": [
+                                {
+                                    "type": "text",
+                                    "text": {
+                                        "content": paragraph.strip()
+                                    }
+                                }
+                            ]
+                        }
+                    })
+
+            # Create page
+            page_data = {
+                "properties": properties,
+                "children": children
+            }
+
+            if parent_page_id:
+                page_data["parent"] = {"page_id": parent_page_id}
+            else:
+                # Need a parent - use workspace (this might fail without proper setup)
+                logger.warning("No parent page specified - page creation may fail")
+                return {"error": "parent_page_id is required"}
+
+            page = self._api_call_with_rate_limit(
+                self.client.pages.create,
+                **page_data
+            )
+
+            logger.info(f"Page created: {page['id']}")
+            return {
+                "id": page["id"],
+                "title": title,
+                "url": page.get("url"),
+                "created_time": page.get("created_time")
+            }
+
+        except Exception as e:
+            logger.error(f"Error creating page: {e}")
+            return {"error": str(e)}
+
+    @tool
+    def update_page(self, page_id: str, title: Optional[str] = None, archived: bool = False) -> Dict[str, Any]:
+        """
+        Update a Notion page properties.
+
+        Args:
+            page_id: Page ID to update.
+            title: New title (optional).
+            archived: Whether to archive the page.
+
+        Returns:
+            Dictionary with update result.
+        """
+        logger.info(f"Updating page: {page_id}")
+
+        try:
+            update_data = {}
+
+            if title:
+                update_data["properties"] = {
+                    "title": {
+                        "title": [
+                            {
+                                "text": {
+                                    "content": title
+                                }
+                            }
+                        ]
+                    }
+                }
+
+            if archived:
+                update_data["archived"] = True
+
+            if not update_data:
+                return {"error": "No updates specified"}
+
+            page = self._api_call_with_rate_limit(
+                self.client.pages.update,
+                page_id=page_id,
+                **update_data
+            )
+
+            logger.info(f"Page updated: {page_id}")
+            return {
+                "id": page["id"],
+                "url": page.get("url"),
+                "last_edited_time": page.get("last_edited_time")
+            }
+
+        except Exception as e:
+            logger.error(f"Error updating page: {e}")
+            return {"error": str(e)}
+
+    @tool
+    def query_database(self, database_id: str, filter_dict: Optional[Dict] = None) -> List[Dict[str, Any]]:
+        """
+        Query a Notion database.
+
+        Args:
+            database_id: Database ID to query.
+            filter_dict: Optional filter dictionary.
+
+        Returns:
+            List of database entries.
+        """
+        logger.info(f"Querying database: {database_id}")
+
+        try:
+            query_params = {}
+            if filter_dict:
+                query_params["filter"] = filter_dict
+
+            results = self._api_call_with_rate_limit(
+                self.client.databases.query,
+                database_id=database_id,
+                **query_params
+            )
+
+            entries = []
+            for page in results.get("results", []):
+                # Extract properties
+                properties = {}
+                for prop_name, prop_value in page.get("properties", {}).items():
+                    prop_type = prop_value.get("type")
+
+                    if prop_type == "title":
+                        title_array = prop_value.get("title", [])
+                        properties[prop_name] = title_array[0].get("plain_text", "") if title_array else ""
+                    elif prop_type == "rich_text":
+                        text_array = prop_value.get("rich_text", [])
+                        properties[prop_name] = text_array[0].get("plain_text", "") if text_array else ""
+                    elif prop_type == "number":
+                        properties[prop_name] = prop_value.get("number")
+                    elif prop_type == "select":
+                        select_obj = prop_value.get("select")
+                        properties[prop_name] = select_obj.get("name") if select_obj else None
+                    elif prop_type == "date":
+                        date_obj = prop_value.get("date")
+                        properties[prop_name] = date_obj.get("start") if date_obj else None
+                    else:
+                        properties[prop_name] = str(prop_value)
+
+                entries.append({
+                    "id": page["id"],
+                    "properties": properties,
+                    "url": page.get("url"),
+                    "last_edited_time": page.get("last_edited_time")
+                })
+
+            logger.info(f"Found {len(entries)} entries in database")
+            return entries
+
+        except Exception as e:
+            logger.error(f"Error querying database: {e}")
+            return []
+
     def get_tools(self):
         """Get all tools as a list for LangChain agent."""
         return [
@@ -296,4 +491,7 @@ class NotionToolkit:
             self.get_recently_edited_pages,
             self.search_pages,
             self.get_databases,
+            self.create_page,
+            self.update_page,
+            self.query_database,
         ]
