@@ -1,0 +1,48 @@
+# Weekly Summary Report Template
+
+name: "weekly_summary"
+description: "Generate a weekly summary report of Notion workspace activity"
+
+prompt_template: |
+  Create a weekly summary report with the following sections:
+
+  ## 📅 Week of {start_date} - {end_date}
+
+  ### 📊 Overview
+  - Total pages created: {pages_created}
+  - Total pages updated: {pages_updated}
+  - Total databases modified: {databases_modified}
+
+  ### ✅ Completed Tasks
+  {completed_tasks}
+
+  ### 📝 New Content
+  {new_content}
+
+  ### 🔄 Updated Content
+  {updated_content}
+
+  ### 💡 Insights & Patterns
+  {insights}
+
+  ### 🎯 Action Items for Next Week
+  {action_items}
+
+  ---
+
+  Style: {report_style}
+  Tone: {language_tone}
+
+variables:
+  - start_date
+  - end_date
+  - pages_created
+  - pages_updated
+  - databases_modified
+  - completed_tasks
+  - new_content
+  - updated_content
+  - insights
+  - action_items
+  - report_style
+  - language_tone
