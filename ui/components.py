@@ -35,8 +35,8 @@ def render_email_card(email: EmailMessage, index: int):
 
             # Labels
             if email.labels:
-                for label in email.labels[:3]:  # Show max 3 labels
-                    st.badge(label)
+                label_text = " ".join([f"`{label}`" for label in email.labels[:3]])
+                st.markdown(label_text)
 
         # Snippet
         if email.snippet:

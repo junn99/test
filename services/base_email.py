@@ -15,11 +15,11 @@ class EmailMessage:
     subject: str
     sender: str
     recipients: List[str]
+    body: str
+    date: datetime
     cc: Optional[List[str]] = None
     bcc: Optional[List[str]] = None
-    body: str
     html_body: Optional[str] = None
-    date: datetime
     is_read: bool = False
     is_starred: bool = False
     labels: Optional[List[str]] = None
