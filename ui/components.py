@@ -159,7 +159,7 @@ def render_sidebar():
         st.header("Navigation")
         page = st.radio(
             "Go to",
-            ["Inbox", "Compose", "Search", "Templates", "Batch Operations", "Agent Chat", "Settings"],
+            ["Inbox", "Compose", "Search", "Analytics", "Filters", "Templates", "Batch Operations", "Agent Chat", "Settings"],
             label_visibility="collapsed"
         )
 
@@ -568,5 +568,279 @@ def render_batch_operations(emails: List[EmailMessage]):
                     "action": BatchActionType.DELETE,
                     "emails": selected_emails
                 }
+
+    return None
+
+
+def render_analytics_dashboard(emails: List[EmailMessage]):
+    """Render email analytics dashboard.
+
+    Args:
+        emails: List of emails to analyze
+    """
+    from utils.analytics import create_analytics
+
+    if not emails:
+        st.info("No emails to analyze. Please load emails from Inbox first.")
+        return
+
+    st.subheader("📊 Email Analytics")
+
+    analytics = create_analytics(emails)
+    stats = analytics.generate_stats()
+
+    # Key Metrics Row
+    st.markdown("### Key Metrics")
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("Total Emails", stats.total_emails)
+
+    with col2:
+        st.metric("Unread", stats.unread_count, delta=f"-{stats.read_rate:.1f}% read")
+
+    with col3:
+        st.metric("Starred", stats.starred_count)
+
+    with col4:
+        st.metric("Today", stats.today_count)
+
+    st.divider()
+
+    # Time-based Metrics
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("This Week", stats.this_week_count)
+
+    with col2:
+        st.metric("This Month", stats.this_month_count)
+
+    with col3:
+        st.metric("Avg/Day", f"{stats.average_per_day:.1f}")
+
+    st.divider()
+
+    # Top Senders
+    st.markdown("### 👥 Top Senders")
+
+    if stats.top_senders:
+        for i, sender_info in enumerate(stats.top_senders[:10], 1):
+            col1, col2, col3 = st.columns([3, 1, 1])
+
+            with col1:
+                st.text(f"{i}. {sender_info['email']}")
+
+            with col2:
+                st.text(f"{sender_info['count']} emails")
+
+            with col3:
+                st.text(f"{sender_info['percentage']}%")
+    else:
+        st.info("No sender data available")
+
+    st.divider()
+
+    # Busiest Times
+    busiest = analytics.get_busiest_times()
+    st.markdown("### ⏰ Busiest Times")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if busiest["busiest_hour"]:
+            st.metric("Busiest Hour",
+                     f"{busiest['busiest_hour']['hour']}:00",
+                     f"{busiest['busiest_hour']['count']} emails")
+
+    with col2:
+        if busiest["busiest_day"]:
+            st.metric("Busiest Day",
+                     busiest["busiest_day"]["day"],
+                     f"{busiest['busiest_day']['count']} emails")
+
+    with col3:
+        if busiest["busiest_month"]:
+            st.metric("Busiest Month",
+                     busiest["busiest_month"]["month"],
+                     f"{busiest['busiest_month']['count']} emails")
+
+    st.divider()
+
+    # Productivity Insights
+    st.markdown("### 💡 Productivity Insights")
+
+    insights = analytics.get_productivity_insights()
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.markdown(f"""
+        **Read Rate:** {insights['read_rate']:.1f}%
+        **Emails per Day:** {insights['emails_per_day']:.1f}
+        **Unread Percentage:** {insights['unread_percentage']:.1f}%
+        """)
+
+        st.info(f"💡 **Recommendation:** {insights['recommendation']}")
+
+    with col2:
+        # Progress bar for read rate
+        st.progress(insights['read_rate'] / 100)
+        st.caption(f"Read Rate: {insights['read_rate']:.1f}%")
+
+
+def render_advanced_filters():
+    """Render advanced filtering interface.
+
+    Returns:
+        EmailFilter object or None
+    """
+    from utils.filters import (
+        EmailFilter, FilterField, FilterOperator, PresetFilters
+    )
+    from datetime import datetime, timedelta
+
+    st.subheader("🔍 Advanced Filters")
+
+    # Preset filters
+    st.markdown("### Quick Filters")
+
+    col1, col2, col3 = st.columns(3)
+
+    preset_filter = None
+
+    with col1:
+        if st.button("📬 Unread + Attachments", use_container_width=True):
+            preset_filter = PresetFilters.unread_with_attachments()
+
+    with col2:
+        if st.button("⭐ Today's Important", use_container_width=True):
+            preset_filter = PresetFilters.today_important()
+
+    with col3:
+        days = st.selectbox("Last N Days", [7, 14, 30, 60, 90], index=0)
+        if st.button("📅 Apply", use_container_width=True):
+            preset_filter = PresetFilters.last_n_days(days)
+
+    if preset_filter:
+        return preset_filter
+
+    st.divider()
+
+    # Custom filters
+    st.markdown("### Custom Filter Builder")
+
+    if "filter_rules" not in st.session_state:
+        st.session_state["filter_rules"] = []
+
+    # Match mode
+    match_mode = st.radio(
+        "Match Mode",
+        ["Match ALL conditions (AND)", "Match ANY condition (OR)"],
+        horizontal=True
+    )
+
+    # Add rule form
+    with st.expander("➕ Add Filter Rule", expanded=True):
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            field = st.selectbox(
+                "Field",
+                options=[f.value for f in FilterField],
+                format_func=lambda x: x.replace("_", " ").title()
+            )
+
+        with col2:
+            # Show relevant operators based on field
+            if field in ["is_read", "is_starred", "has_attachment"]:
+                operator_options = [FilterOperator.EQUALS.value]
+            elif field == "date":
+                operator_options = [
+                    FilterOperator.GREATER_THAN.value,
+                    FilterOperator.LESS_THAN.value,
+                    FilterOperator.EQUALS.value
+                ]
+            else:
+                operator_options = [
+                    FilterOperator.EQUALS.value,
+                    FilterOperator.NOT_EQUALS.value,
+                    FilterOperator.CONTAINS.value,
+                    FilterOperator.NOT_CONTAINS.value,
+                    FilterOperator.STARTS_WITH.value,
+                    FilterOperator.ENDS_WITH.value,
+                ]
+
+            operator = st.selectbox(
+                "Operator",
+                options=operator_options,
+                format_func=lambda x: x.replace("_", " ").title()
+            )
+
+        with col3:
+            # Value input based on field type
+            if field in ["is_read", "is_starred", "has_attachment"]:
+                value = st.selectbox("Value", [True, False])
+            elif field == "date":
+                value = st.date_input("Value", value=datetime.now() - timedelta(days=7))
+                value = datetime.combine(value, datetime.min.time())
+            else:
+                value = st.text_input("Value", placeholder="Enter value...")
+
+        case_sensitive = st.checkbox("Case Sensitive", value=False)
+
+        if st.button("Add Rule", type="primary"):
+            if value:
+                st.session_state["filter_rules"].append({
+                    "field": field,
+                    "operator": operator,
+                    "value": value,
+                    "case_sensitive": case_sensitive
+                })
+                st.success("Rule added!")
+                st.rerun()
+
+    # Show current rules
+    if st.session_state["filter_rules"]:
+        st.markdown("### Current Rules")
+
+        for i, rule in enumerate(st.session_state["filter_rules"]):
+            col1, col2 = st.columns([4, 1])
+
+            with col1:
+                st.text(
+                    f"{i+1}. {rule['field']} {rule['operator']} {rule['value']}"
+                )
+
+            with col2:
+                if st.button("❌", key=f"remove_rule_{i}"):
+                    st.session_state["filter_rules"].pop(i)
+                    st.rerun()
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("Apply Filters", type="primary", use_container_width=True):
+                # Build filter
+                email_filter = EmailFilter()
+                email_filter.set_match_mode(match_mode.startswith("Match ALL"))
+
+                for rule in st.session_state["filter_rules"]:
+                    email_filter.add_rule(
+                        field=FilterField(rule["field"]),
+                        operator=FilterOperator(rule["operator"]),
+                        value=rule["value"],
+                        case_sensitive=rule.get("case_sensitive", False)
+                    )
+
+                return email_filter
+
+        with col2:
+            if st.button("Clear All Rules", use_container_width=True):
+                st.session_state["filter_rules"] = []
+                st.rerun()
+
+    else:
+        st.info("No filter rules defined. Add rules above to start filtering.")
 
     return None

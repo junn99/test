@@ -22,6 +22,8 @@ from ui.components import (
     render_template_selector,
     render_template_manager,
     render_batch_operations,
+    render_analytics_dashboard,
+    render_advanced_filters,
     show_notification,
 )
 
@@ -412,6 +414,59 @@ def render_templates_page():
     render_template_manager()
 
 
+def render_analytics_page():
+    """Render analytics page."""
+    st.title("📊 Analytics")
+
+    # Get current emails from session state
+    emails = st.session_state.get("emails", [])
+
+    if not emails:
+        st.info("No emails loaded. Please go to Inbox and load emails first.")
+        return
+
+    render_analytics_dashboard(emails)
+
+
+def render_filters_page():
+    """Render advanced filters page."""
+    st.title("🔍 Advanced Filters")
+
+    # Get current emails from session state
+    emails = st.session_state.get("emails", [])
+
+    if not emails:
+        st.info("No emails loaded. Please go to Inbox and load emails first.")
+        return
+
+    # Render filter interface
+    email_filter = render_advanced_filters()
+
+    if email_filter:
+        try:
+            # Apply filter
+            with st.spinner("Applying filters..."):
+                filtered_emails = email_filter.apply(emails)
+
+                st.success(f"Filter applied! Found {len(filtered_emails)} matching emails.")
+
+                # Store filtered emails
+                st.session_state["filtered_emails"] = filtered_emails
+
+                # Display results
+                st.markdown(f"### Results ({len(filtered_emails)} emails)")
+
+                for idx, email in enumerate(filtered_emails[:20]):  # Show first 20
+                    render_email_card(email, idx)
+
+                if len(filtered_emails) > 20:
+                    st.info(f"Showing first 20 of {len(filtered_emails)} filtered emails.")
+
+        except Exception as e:
+            logger.error(f"Filter error: {e}")
+            st.error(f"Filter error: {str(e)}")
+
+
 def render_batch_operations_page():
     """Render batch operations page."""
     st.title("⚡ Batch Operations")
@@ -476,6 +531,10 @@ def main():
         render_compose_page()
     elif page == "Search":
         render_search_page()
+    elif page == "Analytics":
+        render_analytics_page()
+    elif page == "Filters":
+        render_filters_page()
     elif page == "Templates":
         render_templates_page()
     elif page == "Batch Operations":
